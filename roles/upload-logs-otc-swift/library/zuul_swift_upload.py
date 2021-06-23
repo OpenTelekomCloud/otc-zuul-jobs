@@ -30,6 +30,7 @@ import io
 import logging
 import mimetypes
 import os
+
 try:
     import queue as queuelib
 except ImportError:
@@ -47,8 +48,10 @@ except ImportError:
     import urllib as urlparse
 import zlib
 import collections
+import hashlib
 
 import openstack
+import openstack.exceptions
 import requests
 import requests.exceptions
 import requestsexceptions
@@ -740,6 +743,13 @@ class Uploader():
             return True
         return False
 
+    def _file_exist(self, object_name):
+        """Check that file is uploaded"""
+        obj = self.cloud.get_object_metadata(self.container, object_name)
+        if obj is None:
+            return False
+        return True
+
     def _post_file(self, file_detail):
         relative_path = os.path.join(self.prefix, file_detail.relative_path)
         headers = {}
@@ -781,6 +791,10 @@ class Uploader():
                 'content_type': file_detail.mimetype
             }
         )
+
+        # ensure file was uploaded
+        if not self._file_exist(relative_path):
+            raise Exception("Swift upload failed")
 
 
 def run(cloud, container, files,
@@ -930,6 +944,17 @@ def cli_main():
               public=not args.no_public,
               dry_run=args.dry_run)
     print(url)
+
+
+def _file_md5(path):
+    chunk_size = 0x2000
+    with open(path, "rb") as file:
+        file_hash = hashlib.md5()
+        chunk = file.read(chunk_size)
+        while chunk:
+            file_hash.update(chunk)
+            chunk = file.read(chunk_size)
+    return file_hash.hexdigest()
 
 
 if __name__ == '__main__':
